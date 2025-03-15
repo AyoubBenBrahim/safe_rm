@@ -89,15 +89,16 @@ test: setup
 		exit 1; \
 	fi
 	@mkdir -p tests
-	@bash tests/test.sh > tests/tests.log 2>&1
-	@grep -E "All tests passed successfully!|[0-9]+ tests failed." tests/tests.log || { echo "${RED}Tests failed!${NC}"; exit 1; }
+	@bash tests/test.sh > tests/test_results.log 2>&1
+	@grep -E "All tests passed successfully!|[0-9]+ tests failed." tests/test_results.log || { echo "${RED}Tests failed!${NC}"; exit 1; }
+	@$(MAKE) clean
 
 # Clean temporary files
 .PHONY: clean
 clean:
 	@echo "Cleaning up..."
 	@rm -rf tests/safe_rm_test
-	@rm -f test_results.log
+# @rm -f test_results.log
 	@find . -name "*.bak" -delete
 	@find . -name "*~" -delete
 	@echo "${GREEN}Clean up complete.${NC}"

@@ -454,6 +454,6 @@ else
     exit 1
 fi
 
-# Clean up silently
-cd ..
-/bin/rm -rf "$TEST_DIR" > /dev/null 2>&1
+# # Clean up silently
+# cd ..
+# /bin/rm -rf "$TEST_DIR" > /dev/null 2>&1
