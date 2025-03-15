@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# Version information
 VERSION="1.0.0"
 
-# Define ANSI color codes
+# ANSI color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -12,7 +11,6 @@ BLUE='\033[0;34m'
 WHITE='\033[0;37m'
 MAGENTA='\033[0;35m'
 
-# Initialize flags
 verbose=false
 dry_run=false
 auto_confirm=false
@@ -31,7 +29,6 @@ log_message() {
     # Don't show errors if logging fails
 }
 
-# Validate configuration file
 validate_config() {
     local file="$1"
     local valid=true
@@ -42,7 +39,7 @@ validate_config() {
         # Skip comments and empty lines
         [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
         
-        # Check for invalid patterns
+        # invalid patterns
         if [[ "$line" =~ [^a-zA-Z0-9_.*\-\/\[\]\{\}\(\)\?\+] ]]; then
             echo -e "${RED}Invalid pattern at line $line_num: '$line'${NC}"
             valid=false
@@ -54,7 +51,6 @@ validate_config() {
 
 display_help() {
     echo -e "${GREEN}Safe RM - Version $VERSION${NC}"
-    # Get the script name from $0
     local script_name=$(basename "$0")
     
     echo
@@ -92,13 +88,11 @@ display_help() {
     echo -e "${YELLOW}Logs are stored in:${NC} $log_file"
 }
 
-# If no arguments are provided, display help message and exit
 if [ $# -eq 0 ]; then
     display_help
     exit 0
 fi
 
-# Parse command-line options
 while getopts ":vne:E:y-:" opt; do
     case "${opt}" in
         -)
@@ -133,19 +127,16 @@ while getopts ":vne:E:y-:" opt; do
 done
 shift $((OPTIND - 1))
 
-# Ensure the Trash directory exists
 TRASH_DIR="${HOME}/.Trash"
 mkdir -p "$TRASH_DIR"
 # mkdir -p "$(dirname "$log_file")"
 
 
-# Function to generate a unique name with version numbers
 generate_unique_name() {
     local base_name="$1"
     local counter=1
     local new_name="${base_name}_v${counter}"
 
-    # Increment the counter until we find a unique name
     while [ -e "$TRASH_DIR/$new_name" ]; do
         counter=$((counter + 1))
         new_name="${base_name}_v${counter}"
@@ -154,7 +145,6 @@ generate_unique_name() {
     echo "$new_name"
 }
 
-# Function to determine the type of file and set the appropriate color
 get_file_color() {
     local file="$1"
     if [ -d "$file" ]; then
@@ -166,7 +156,6 @@ get_file_color() {
     fi
 }
 
-# Function to move files/directories
 move_to_trash() {
     local file="$1"
     local base_name=$(basename "$file")
@@ -197,7 +186,7 @@ move_to_trash() {
     if [ -e "$TRASH_DIR/$base_name" ]; then
         local new_name=$(generate_unique_name "$base_name")
         if [ $? -ne 0 ]; then
-            return 1 # generate_unique_name failed
+            return 1 
         fi
         if $verbose; then
             echo -e "${YELLOW}Renaming '$base_name' to '/$trash_dir_name/$new_name' to avoid conflicts.${NC}"
@@ -265,7 +254,7 @@ move_to_trash() {
 confirm_deletion() {
     local files=("$@")
     local total_files=${#files[@]}
-    local display_count=10  # Display more files in confirmation
+    local display_count=10  
 
     echo -e "${YELLOW}The following items will be moved to Trash:${NC}"
     local output=""
@@ -279,7 +268,6 @@ confirm_deletion() {
         echo -e "${YELLOW}And $((total_files - $display_count)) more items.${NC}"
     fi
     
-    # Skip confirmation if auto_confirm is enabled
     if $auto_confirm; then
         echo -e "${YELLOW}Auto-confirming deletion of $total_files items.${NC}"
         return 0
@@ -295,7 +283,6 @@ confirm_deletion() {
     fi
 }
 
-# Function to check if a file should be excluded
 # should_exclude() {
 #     local file="$1"
 #     local basename=$(basename "$file")
@@ -314,10 +301,9 @@ confirm_deletion() {
 #         fi
 #     done
     
-#     return 1 # Should not exclude
+#     return 1 
 # }
 
-# Function to check if a file should be excluded
 should_exclude() {
     local file="$1"
     local basename=$(basename "$file")
@@ -328,10 +314,8 @@ should_exclude() {
         pattern="${pattern## }"
         pattern="${pattern%% }"
         
-        # Skip empty patterns
         [ -z "$pattern" ] && continue
         
-        # Debug output if verbose mode is enabled
         if $verbose; then
             echo -e "${YELLOW}Checking if '$file' matches exclusion pattern '$pattern'${NC}" >&2
             echo -e "${YELLOW}Using relative path: '$relative_path'${NC}" >&2
@@ -354,7 +338,7 @@ should_exclude() {
                 fi
                 return 0 # Should exclude
             fi
-        # For simple filename patterns
+        
         elif [[ "$basename" == $pattern ]]; then
             if $verbose; then
                 echo -e "${GREEN}Excluding: '$basename' matches basename pattern '$pattern'${NC}" >&2
@@ -366,7 +350,6 @@ should_exclude() {
     return 1 # Should not exclude
 }
 
-# Get list of files/directories to delete
 files_to_delete=("$@")
 
 # If multiple files/directories are provided, ask for confirmation
@@ -374,18 +357,15 @@ if [ ${#files_to_delete[@]} -gt 1 ]; then
     confirm_deletion "${files_to_delete[@]}" || exit 1
 fi
 
-# Arrays to store the status of moved files
 moved_files=()
 failed_files=()
 
-# Loop through all provided arguments
 for file in "${files_to_delete[@]}"; do
-    # Input validation: Check if the file is an absolute path or relative
+    # Check if the file is an absolute path or relative
     if [[ "$file" != /* ]]; then
         file="$PWD/$file" # Convert to absolute path
     fi
     
-    # Skip excluded files
     if should_exclude "$file"; then
         if $verbose; then
             echo -e "${YELLOW}Excluding '$file' from removal.${NC}"
@@ -400,7 +380,6 @@ for file in "${files_to_delete[@]}"; do
     fi
 done
 
-# Print summary message
 echo -e "${GREEN}${#moved_files[@]} items moved to Trash.${NC}"
 if [ ${#failed_files[@]} -gt 0 ]; then
     echo -e "${RED}${#failed_files[@]} items failed to move to Trash (likely due to permissions).${NC}"
