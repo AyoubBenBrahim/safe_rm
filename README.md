@@ -2,6 +2,8 @@
 
 A safer alternative to the standard `rm` command that moves files to trash instead of permanently deleting them.
 
+> **Note:** You can still use the original `/bin/rm` command if needed. This script works by aliasing the `rm` command to `safe_rm`, ensuring safer file deletion by default.
+
 ## Features
 
 - Moves files to trash instead of permanent deletion
