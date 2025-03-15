@@ -19,12 +19,16 @@ auto_confirm=false
 declare -a exclusions=()
 log_file="$HOME/.safe_rm.log"
 
-# Logging function
 log_message() {
     local level="$1"
     local message="$2"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] [$level] $message" >> "$log_file"
+    
+    # Check if log file is writable before attempting to write
+    if [ -w "$(dirname "$log_file")" ] || [ -w "$log_file" ]; then
+        echo "[$timestamp] [$level] $message" >> "$log_file" 2>/dev/null
+    fi
+    # Don't show errors if logging fails
 }
 
 # Validate configuration file
@@ -133,8 +137,6 @@ shift $((OPTIND - 1))
 TRASH_DIR="${HOME}/.Trash"
 mkdir -p "$TRASH_DIR"
 # mkdir -p "$(dirname "$log_file")"
-
-
 
 
 # Function to generate a unique name with version numbers
@@ -266,10 +268,12 @@ confirm_deletion() {
     local display_count=10  # Display more files in confirmation
 
     echo -e "${YELLOW}The following items will be moved to Trash:${NC}"
+    local output=""
     for ((i = 0; i < $display_count && i < total_files; i++)); do
         local color=$(get_file_color "${files[i]}")
-        echo -e "  ${color}${files[i]}${NC}"
+        output+="${color}${files[i]}${NC} "
     done
+    echo -e "  $output"
 
     if [ $total_files -gt $display_count ]; then
         echo -e "${YELLOW}And $((total_files - $display_count)) more items.${NC}"

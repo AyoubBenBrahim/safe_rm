@@ -2,3 +2,4 @@ safe_rm_test/
 *.log
 *~
 .vscode
+.DS_Store
