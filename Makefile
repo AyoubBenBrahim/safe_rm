@@ -88,7 +88,9 @@ test: setup
 		echo "${RED}Error: test.sh not found in tests directory${NC}"; \
 		exit 1; \
 	fi
-	@bash tests/test.sh > /dev/null 2>&1 || { echo "${RED}Tests failed!${NC}"; exit 1; }
+	@mkdir -p tests
+	@bash tests/test.sh > tests/tests.log 2>&1
+	@grep -E "All tests passed successfully!|[0-9]+ tests failed." tests/tests.log || { echo "${RED}Tests failed!${NC}"; exit 1; }
 
 # Clean temporary files
 .PHONY: clean
