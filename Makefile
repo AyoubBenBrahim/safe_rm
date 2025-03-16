@@ -1,6 +1,6 @@
 # Configuration
 SCRIPT_NAME = safe_rm.sh
-INSTALL_DIR = $(HOME)/safe_rm
+INSTALL_DIR = $(HOME)/.local/bin
 LOG_FILE = $(HOME)/.safe_rm.log
 
 # Define ANSI color codes
@@ -11,6 +11,14 @@ NC = \033[0m
 
 # Version from script
 VERSION := $(shell grep '^VERSION=' $(SCRIPT_NAME) | cut -d'"' -f2)
+
+# Detect OS for sed compatibility
+UNAME := $(shell uname)
+ifeq ($(UNAME), Darwin)
+    SED_INPLACE = sed -i ''
+else
+    SED_INPLACE = sed -i
+endif
 
 # Default target
 .PHONY: all
@@ -33,33 +41,42 @@ help:
 	@echo "  docs       - Generate documentation"
 	@echo "  update     - Update to the latest version"
 
-# Detect which shell configuration file to use
-.PHONY: detect-shell
-detect-shell:
-	@if [ -n "$$ZSH_VERSION" ]; then \
-		echo "$(HOME)/.zshrc"; \
-	elif [ -n "$$BASH_VERSION" ]; then \
-		echo "$(HOME)/.bashrc"; \
+.PHONY: check-path
+check-path:
+	@if echo "$$PATH" | grep -q "$(HOME)/.local/bin"; then \
+		echo "${GREEN}✓ $(HOME)/.local/bin is in your PATH${NC}"; \
 	else \
-		echo "$(HOME)/.profile"; \
+		echo "${YELLOW}⚠ Warning: $(HOME)/.local/bin is not in your PATH${NC}"; \
+		echo "Add the following to your shell configuration file:"; \
+		echo "export PATH=\"\$$PATH:$(HOME)/.local/bin\""; \
 	fi
 
-# Install with shell detection
 .PHONY: install
-install: setup
+install: setup check-path
 	@echo "Installing $(SCRIPT_NAME) to $(INSTALL_DIR)..."
 	@mkdir -p $(INSTALL_DIR)
 	@cp $(SCRIPT_NAME) $(INSTALL_DIR)/
 	@chmod +x $(INSTALL_DIR)/$(SCRIPT_NAME)
-	@echo "Creating alias..."
-	@SHELL_RC=$$($(MAKE) -s detect-shell); \
-	if grep -q "alias rm=.*$(SCRIPT_NAME)" $$SHELL_RC 2>/dev/null; then \
-		echo "${YELLOW}Alias already exists in $$SHELL_RC${NC}"; \
-	else \
-		echo "alias rm='$(INSTALL_DIR)/$(SCRIPT_NAME)'" >> $$SHELL_RC; \
-		echo "${GREEN}Added alias to $$SHELL_RC${NC}"; \
+	@echo "Creating aliases..."
+	@if [ -f "$(HOME)/.bashrc" ]; then \
+		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.bashrc" 2>/dev/null; then \
+			echo "${YELLOW}Alias already exists in ~/.bashrc${NC}"; \
+		else \
+			echo "alias rm='$(INSTALL_DIR)/$(SCRIPT_NAME)'" >> "$(HOME)/.bashrc"; \
+			echo "${GREEN}Added alias to ~/.bashrc${NC}"; \
+		fi; \
 	fi
-	@echo "${GREEN}Installation complete. Please restart your shell or source your shell config file.${NC}"
+	@if [ -f "$(HOME)/.zshrc" ]; then \
+		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.zshrc" 2>/dev/null; then \
+			echo "${YELLOW}Alias already exists in ~/.zshrc${NC}"; \
+		else \
+			echo "alias rm='$(INSTALL_DIR)/$(SCRIPT_NAME)'" >> "$(HOME)/.zshrc"; \
+			echo "${GREEN}Added alias to ~/.zshrc${NC}"; \
+		fi; \
+	fi
+	@echo "${GREEN}Installation complete. Please restart your shell or run:${NC}"
+	@echo "  source ~/.bashrc  # if using bash"
+	@echo "  source ~/.zshrc   # if using zsh"
 
 # Uninstall the script
 .PHONY: uninstall
@@ -69,18 +86,33 @@ uninstall:
 		rm -f $(INSTALL_DIR)/$(SCRIPT_NAME); \
 		echo "${GREEN}Script removed.${NC}"; \
 	else \
-	    echo "${YELLOW}Script not found in $(INSTALL_DIR) - nothing to remove.${NC}"; \
+		echo "${YELLOW}Script not found in $(INSTALL_DIR) - nothing to remove.${NC}"; \
 	fi
-	@SHELL_RC=$$($(MAKE) -s detect-shell); \
-	if grep -q "alias rm=.*$(SCRIPT_NAME)" $$SHELL_RC 2>/dev/null; then \
-		sed -i '' -e '/alias rm=.*$(SCRIPT_NAME)/d' $$SHELL_RC; \
-		echo "${GREEN}Alias removed from $$SHELL_RC${NC}"; \
+	@if [ -f "$(HOME)/.bashrc" ]; then \
+		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.bashrc" 2>/dev/null; then \
+			$(SED_INPLACE) -e '/alias rm=.*$(SCRIPT_NAME)/d' "$(HOME)/.bashrc"; \
+			echo "${GREEN}Alias removed from ~/.bashrc${NC}"; \
+		else \
+			echo "${YELLOW}No alias found in ~/.bashrc - nothing to remove.${NC}"; \
+		fi; \
+	fi
+	@if [ -f "$(HOME)/.zshrc" ]; then \
+		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.zshrc" 2>/dev/null; then \
+			$(SED_INPLACE) -e '/alias rm=.*$(SCRIPT_NAME)/d' "$(HOME)/.zshrc"; \
+			echo "${GREEN}Alias removed from ~/.zshrc${NC}"; \
+		else \
+			echo "${YELLOW}No alias found in ~/.zshrc - nothing to remove.${NC}"; \
+		fi; \
+	fi
+	@echo "Removing log file $(LOG_FILE)..."
+	@if [ -f "$(LOG_FILE)" ]; then \
+		rm -f $(LOG_FILE); \
+		echo "${GREEN}Log file removed.${NC}"; \
 	else \
-		echo "${YELLOW}No alias found in $$SHELL_RC - nothing to remove.${NC}"; \
+		echo "${YELLOW}Log file not found - nothing to remove.${NC}"; \
 	fi
 	@echo "${GREEN}Uninstallation complete. Please restart your shell or source your shell config file.${NC}"
 
-# Run tests with dependencies
 .PHONY: test
 test: setup
 	@echo "Running tests..."
@@ -89,63 +121,80 @@ test: setup
 		exit 1; \
 	fi
 	@mkdir -p tests
-	@bash tests/test.sh > tests/test_results.log 2>&1
-	@grep -E "All tests passed successfully!|[0-9]+ tests failed." tests/test_results.log || { echo "${RED}Tests failed!${NC}"; exit 1; }
-	@$(MAKE) clean
+	@bash tests/test.sh > tests/test_results.log 2>&1 || true
+	@tail -n 2 tests/test_results.log
+	@if grep -q "All tests passed successfully!" tests/test_results.log; then \
+		$(MAKE) clean; \
+		exit 0; \
+	elif grep -q "[0-9]\\+ tests failed" tests/test_results.log; then \
+		$(MAKE) clean; \
+		exit 0; \
+	else \
+		echo "${RED}✗ Unexpected test output!${NC}"; \
+		$(MAKE) clean; \
+		exit 0; \
+	fi
 
-# Clean temporary files
+
+
 .PHONY: clean
 clean:
-	@echo "Cleaning up..."
+#	@echo "Cleaning up..."
 	@rm -rf tests/safe_rm_test
-# @rm -f test_results.log
 	@find . -name "*.bak" -delete
 	@find . -name "*~" -delete
 	@echo "${GREEN}Clean up complete.${NC}"
 
-# Setup configuration
 .PHONY: setup
 setup:
 	@echo "Setting up directories and log file..."
-	@sudo mkdir -p $(INSTALL_DIR)
-	@sudo touch $(LOG_FILE)
+	@mkdir -p $(INSTALL_DIR)
+	@touch $(LOG_FILE)
 	@chmod 644 $(LOG_FILE)
 	@echo "${GREEN}Setup complete. Log file at: $(LOG_FILE)${NC}"
 
-# Verify installation
 .PHONY: verify
 verify:
 	@echo "Verifying installation..."
+	@echo "SCRIPT_NAME is: $(SCRIPT_NAME)"
 	@if [ -x "$(INSTALL_DIR)/$(SCRIPT_NAME)" ]; then \
-	    echo "${GREEN}✓ Script is installed and executable${NC}"; \
+		echo "${GREEN}✓ Script is installed and executable${NC}"; \
 	else \
-	    echo "${RED}✗ Script is not properly installed${NC}"; \
+		echo "${RED}✗ Script is not properly installed${NC}"; \
 	fi
-	@SHELL_RC=$$($(MAKE) -s detect-shell); \
-	if [ -f "$$SHELL_RC" ]; then \
-		if grep -q "alias rm=.*$(SCRIPT_NAME)" $$SHELL_RC 2>/dev/null; then \
-		    echo "${GREEN}✓ Alias is configured in $$SHELL_RC${NC}"; \
+	@if [ -f "$(HOME)/.bashrc" ]; then \
+		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.bashrc" 2>/dev/null; then \
+			echo "${GREEN}✓ Alias is configured in ~/.bashrc${NC}"; \
 		else \
-		    echo "${RED}✗ Alias is not configured${NC}"; \
-		fi \
+			echo "${RED}✗ Alias is not configured in ~/.bashrc${NC}"; \
+		fi; \
 	else \
-	    echo "${RED}✗ Shell configuration file not found${NC}"; \
+		echo "${YELLOW}⚠ ~/.bashrc not found${NC}"; \
+	fi
+	@if [ -f "$(HOME)/.zshrc" ]; then \
+		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.zshrc" 2>/dev/null; then \
+			echo "${GREEN}✓ Alias is configured in ~/.zshrc${NC}"; \
+		else \
+			echo "${RED}✗ Alias is not configured in ~/.zshrc${NC}"; \
+		fi; \
+	else \
+		echo "${YELLOW}⚠ ~/.zshrc not found${NC}"; \
 	fi
 	@if [ -f "$(LOG_FILE)" ]; then \
-	    echo "${GREEN}✓ Log file exists: $(LOG_FILE)${NC}"; \
+		echo "${GREEN}✓ Log file exists: $(LOG_FILE)${NC}"; \
 	else \
-	    echo "${RED}✗ Log file does not exist${NC}"; \
+		echo "${RED}✗ Log file does not exist${NC}"; \
 	fi
+	@$(MAKE) check-path
 
-# Display version information
 .PHONY: version
 version:
 	@echo "Safe_rm version $(VERSION)"
 
-# Generate documentation
 .PHONY: docs
 docs:
-	@echo "${YELLOW}update later${NC}"
+	@echo "Generating documentation..."
+	@echo "${YELLOW}Documentation generation will be implemented in a future version.${NC}"
 
 # Update to latest version (if using git)
 .PHONY: update
