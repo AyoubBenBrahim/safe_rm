@@ -18,6 +18,22 @@ A safer alternative to the standard `rm` command that moves files to trash inste
 
 ## Installation
 
+You can install `safe_rm` using the provided Makefile. Run the following commands:
+
+```bash
+make install
+```
+or simply 
+```bash
+make i
+```
+
+To uninstall, use:
+
+```bash
+make uninstall
+```
+
 ## Usage
 
 ```bash
@@ -57,6 +73,18 @@ safe_rm -n file1.txt
 # Automatically confirm deletion without prompting
 safe_rm -y file1.txt dir1
 ```
+
+## Makefile Targets
+
+The Makefile includes several useful targets:
+
+- `help`: Show help message
+- `install` or just `i`
+- `uninstall`
+- `test`: Run all tests
+- `clean`: Remove temporary files
+- `verify`: Check if the script is properly installed
+- `update`: Update to the latest version (if using git)
 
 ## Exclusion Patterns
 
