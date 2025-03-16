@@ -51,6 +51,9 @@ check-path:
 		echo "export PATH=\"\$$PATH:$(HOME)/.local/bin\""; \
 	fi
 
+.PHONY: i
+i: install
+
 .PHONY: install
 install: setup check-path
 	@echo "Installing $(SCRIPT_NAME) to $(INSTALL_DIR)..."
