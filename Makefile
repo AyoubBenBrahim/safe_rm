@@ -54,29 +54,51 @@ check-path:
 .PHONY: install
 install: setup check-path
 	@echo "Installing $(SCRIPT_NAME) to $(INSTALL_DIR)..."
+	@if [ ! -f "$(SCRIPT_NAME)" ]; then \
+		echo "${RED}Error: $(SCRIPT_NAME) not found in current directory${NC}"; \
+		exit 1; \
+	fi
 	@mkdir -p $(INSTALL_DIR)
+	@if [ -f "$(INSTALL_DIR)/$(SCRIPT_NAME)" ]; then \
+		echo "${YELLOW}Script already installed. Updating...${NC}"; \
+	fi
 	@cp $(SCRIPT_NAME) $(INSTALL_DIR)/
 	@chmod +x $(INSTALL_DIR)/$(SCRIPT_NAME)
 	@echo "Creating aliases..."
 	@if [ -f "$(HOME)/.bashrc" ]; then \
+		cp "$(HOME)/.bashrc" "$(HOME)/.bashrc.bak.$(shell date +%Y%m%d%H%M%S)" 2>/dev/null || true; \
 		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.bashrc" 2>/dev/null; then \
 			echo "${YELLOW}Alias already exists in ~/.bashrc${NC}"; \
 		else \
+			echo "" >> "$(HOME)/.bashrc"; \
+			echo "# Added by safe_rm installer $(shell date)" >> "$(HOME)/.bashrc"; \
 			echo "alias rm='$(INSTALL_DIR)/$(SCRIPT_NAME)'" >> "$(HOME)/.bashrc"; \
 			echo "${GREEN}Added alias to ~/.bashrc${NC}"; \
 		fi; \
+	else \
+		echo "${YELLOW}~/.bashrc not found, creating it...${NC}"; \
+		echo "# Added by safe_rm installer $(shell date)" > "$(HOME)/.bashrc"; \
+		echo "alias rm='$(INSTALL_DIR)/$(SCRIPT_NAME)'" >> "$(HOME)/.bashrc"; \
+		echo "${GREEN}Created ~/.bashrc with alias${NC}"; \
 	fi
 	@if [ -f "$(HOME)/.zshrc" ]; then \
+		cp "$(HOME)/.zshrc" "$(HOME)/.zshrc.bak.$(shell date +%Y%m%d%H%M%S)" 2>/dev/null || true; \
 		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.zshrc" 2>/dev/null; then \
 			echo "${YELLOW}Alias already exists in ~/.zshrc${NC}"; \
 		else \
+			echo "" >> "$(HOME)/.zshrc"; \
+			echo "# Added by safe_rm installer $(shell date)" >> "$(HOME)/.zshrc"; \
 			echo "alias rm='$(INSTALL_DIR)/$(SCRIPT_NAME)'" >> "$(HOME)/.zshrc"; \
 			echo "${GREEN}Added alias to ~/.zshrc${NC}"; \
 		fi; \
+	else \
+		echo "${YELLOW}~/.zshrc not found, skipping...${NC}"; \
 	fi
-	@echo "${GREEN}Installation complete. Please restart your shell or run:${NC}"
+	@echo "${GREEN}Installation complete!${NC}"
+	@echo "${YELLOW}To use safe_rm immediately, run:${NC}"
 	@echo "  source ~/.bashrc  # if using bash"
 	@echo "  source ~/.zshrc   # if using zsh"
+	@echo "${YELLOW}Or restart your terminal.${NC}"
 
 # Uninstall the script
 .PHONY: uninstall
@@ -90,7 +112,7 @@ uninstall:
 	fi
 	@if [ -f "$(HOME)/.bashrc" ]; then \
 		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.bashrc" 2>/dev/null; then \
-			$(SED_INPLACE) -e '/alias rm=.*$(SCRIPT_NAME)/d' "$(HOME)/.bashrc"; \
+			$(SED_INPLACE) -e '/# Added by safe_rm installer/d' -e '/alias rm=.*$(SCRIPT_NAME)/d' "$(HOME)/.bashrc"; \
 			echo "${GREEN}Alias removed from ~/.bashrc${NC}"; \
 		else \
 			echo "${YELLOW}No alias found in ~/.bashrc - nothing to remove.${NC}"; \
@@ -98,7 +120,7 @@ uninstall:
 	fi
 	@if [ -f "$(HOME)/.zshrc" ]; then \
 		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.zshrc" 2>/dev/null; then \
-			$(SED_INPLACE) -e '/alias rm=.*$(SCRIPT_NAME)/d' "$(HOME)/.zshrc"; \
+			$(SED_INPLACE) -e '/# Added by safe_rm installer/d' -e '/alias rm=.*$(SCRIPT_NAME)/d' "$(HOME)/.zshrc"; \
 			echo "${GREEN}Alias removed from ~/.zshrc${NC}"; \
 		else \
 			echo "${YELLOW}No alias found in ~/.zshrc - nothing to remove.${NC}"; \
@@ -135,11 +157,8 @@ test: setup
 		exit 0; \
 	fi
 
-
-
 .PHONY: clean
 clean:
-#	@echo "Cleaning up..."
 	@rm -rf tests/safe_rm_test
 	@find . -name "*.bak" -delete
 	@find . -name "*~" -delete
@@ -156,11 +175,10 @@ setup:
 .PHONY: verify
 verify:
 	@echo "Verifying installation..."
-	@echo "SCRIPT_NAME is: $(SCRIPT_NAME)"
 	@if [ -x "$(INSTALL_DIR)/$(SCRIPT_NAME)" ]; then \
 		echo "${GREEN}✓ Script is installed and executable${NC}"; \
 	else \
-		echo "${RED}✗ Script is not properly installed${NC}"; \
+		echo "${RED}✗ Script is not properly installed (in $(INSTALL_DIR))${NC}"; \
 	fi
 	@if [ -f "$(HOME)/.bashrc" ]; then \
 		if grep -q "alias rm=.*$(SCRIPT_NAME)" "$(HOME)/.bashrc" 2>/dev/null; then \
@@ -201,10 +219,10 @@ docs:
 update:
 	@echo "Checking for updates..."
 	@if command -v git > /dev/null && [ -d .git ]; then \
-		git fetch > /dev/null 2>&1; \
-		if [ $$(git rev-list HEAD...origin/main --count) -gt 0 ]; then \
+		git fetch > /dev/null 2>&1 || { echo "${RED}Failed to fetch updates.${NC}"; exit 1; }; \
+		if [ $$(git rev-list HEAD...origin/main --count 2>/dev/null) -gt 0 ]; then \
 			echo "${YELLOW}Updates available. Updating...${NC}"; \
-			git pull origin main > /dev/null 2>&1; \
+			git pull origin main > /dev/null 2>&1 || { echo "${RED}Failed to pull updates.${NC}"; exit 1; }; \
 			echo "${GREEN}Update complete. Run 'make install' to apply changes.${NC}"; \
 		else \
 			echo "${GREEN}Already up to date.${NC}"; \
