@@ -1,15 +1,13 @@
-# Configuration
+
 SCRIPT_NAME = safe_rm.sh
 INSTALL_DIR = $(HOME)/.local/bin
 LOG_FILE = $(HOME)/.safe_rm.log
 
-# Define ANSI color codes
 RED = \033[0;31m
 GREEN = \033[0;32m
 YELLOW = \033[0;33m
 NC = \033[0m
 
-# Version from script
 VERSION := $(shell grep '^VERSION=' $(SCRIPT_NAME) | cut -d'"' -f2)
 
 # Detect OS for sed compatibility
@@ -24,7 +22,6 @@ endif
 .PHONY: all
 all: help
 
-# Help message
 .PHONY: help
 help:
 	@echo "Safe RM - Version $(VERSION)"
@@ -103,7 +100,6 @@ install: setup check-path
 	@echo "  source ~/.zshrc   # if using zsh"
 	@echo "${YELLOW}Or restart your terminal.${NC}"
 
-# Uninstall the script
 .PHONY: uninstall
 uninstall:
 	@echo "Removing $(SCRIPT_NAME) from $(INSTALL_DIR)..."
