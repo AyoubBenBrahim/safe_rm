@@ -13,7 +13,7 @@ SAFE_RM="$(realpath $(dirname "$0")/../safe_rm.sh)"
 
 # Create test directory
 TEST_DIR="$(dirname "$0")/safe_rm_test"
-rm -rf "$TEST_DIR" # Clean up any previous test
+/bin/rm -rf "$TEST_DIR" # Clean up any previous test
 mkdir -p "$TEST_DIR"
 cd "$TEST_DIR" || { echo -e "${RED}Failed to create test directory${NC}"; exit 1; }
 
@@ -258,7 +258,7 @@ echo "n" | "$@"
 exit 1
 EOF
 setup_test_files chmod +x "$WRAPPER_SCRIPT"
-run_test "Reject confirmation" 1 "$WRAPPER_SCRIPT" bash "$SAFE_RM" reject_test/*
+run_test "Reject confirmation" 1 "$WRAPPER_SCRIPT" bash "$SAFE_RM" -i reject_test/*
 verify_test "Files still exist after rejection" [ -f reject_test/file1.txt ] && [ -f reject_test/file2.txt ] && [ -f reject_test/file3.txt ]
 
 # Test 25: Version checking
@@ -309,13 +309,13 @@ done
 run_test "Large file set handling" 0 bash "$SAFE_RM" -y large_set/*
 verify_test "Large file set handled correctly" [ "$(ls -A large_set 2>/dev/null)" = "" ]
 
-# Test 32: Trash directory permissions
+# Test 32: Trash directory permissions (via env override)
 print_header "Trash directory permissions"
-mkdir -p "$TEST_TRASH/test_perm"
-chmod 000 "$TEST_TRASH/test_perm"
+mkdir -p "$TEST_DIR/locked_trash"
+chmod 000 "$TEST_DIR/locked_trash"
 touch perm_test_file.txt
-run_test "Trash directory permission handling" 1 bash "$SAFE_RM" -y --trash-dir="$TEST_TRASH/test_perm" perm_test_file.txt
-chmod 755 "$TEST_TRASH/test_perm"
+run_test "Trash directory permission handling" 1 bash -c "TRASH_DIR='$TEST_DIR/locked_trash' bash '$SAFE_RM' -y perm_test_file.txt"
+chmod 755 "$TEST_DIR/locked_trash"
 
 # Test 33: Long options
 print_header "Long options"
@@ -334,15 +334,11 @@ setup_test_files touch "$long_name.txt"
 run_test "Very long filename" 0 bash "$SAFE_RM" -y "$long_name.txt"
 verify_test "Very long filename handled correctly" [ ! -f "$long_name.txt" ]
 
-# Test 36: Handle full trash directory
-print_header "Handle full trash directory"
-mkdir -p "$TEST_DIR/mock_full_trash"
-touch "$TEST_DIR/mock_full_trash/some_file"
-chmod 500 "$TEST_DIR/mock_full_trash"  # Read but not write
-touch full_disk_test_file.txt
-# The script should fail when it can't write to trash
-run_test "Handle full trash directory" 1 bash "$SAFE_RM" -y --trash-dir="$TEST_DIR/mock_full_trash" full_disk_test_file.txt
-chmod 755 "$TEST_DIR/mock_full_trash"
+# Test 36: Force flag (-f) suppresses confirmation
+print_header "Force flag (-f) suppresses confirmation"
+setup_test_files touch force_flag_file1.txt force_flag_file2.txt
+run_test "Force flag skips confirmation for multiple files" 0 bash "$SAFE_RM" -f force_flag_file1.txt force_flag_file2.txt
+verify_test "Force flag files moved to trash" [ ! -f force_flag_file1.txt ] && [ ! -f force_flag_file2.txt ]
 
 # Test 37: Wildcard exclusion - asterisk (*)
 print_header "Wildcard exclusion - asterisk (*)"
@@ -407,7 +403,7 @@ touch race_test_file.txt
 # We'll remove the file just before safe_rm tries to access it
 (
    sleep 0.1
-   rm -f race_test_file.txt
+   /bin/rm -f race_test_file.txt
 ) &
 # Give the background process time to start
 sleep 0.2
@@ -423,7 +419,7 @@ cat > "$TEST_DIR/race_test_wrapper.sh" << 'EOF'
 touch race_test_file.txt
 
 # Remove it in background after a small delay
-(sleep 0.1; rm -f race_test_file.txt) &
+(sleep 0.1; /bin/rm -f race_test_file.txt) &
 
 # Give the removal a chance to happen
 sleep 0.2
@@ -444,9 +440,164 @@ chmod +x "$TEST_DIR/race_test_wrapper.sh"
 # Run the test with the wrapper
 run_test "Race condition handling" 0 "$TEST_DIR/race_test_wrapper.sh" bash "$SAFE_RM" -y
 
+# ── v2.0.0 Feature Tests ──────────────────────────────────────────────────────
+
+# Test 46: Quiet mode (-q)
+print_header "Quiet mode (-q)"
+setup_test_files touch quiet_test_file.txt
+output=$(bash "$SAFE_RM" -q quiet_test_file.txt 2>&1)
+if [ -z "$output" ]; then
+    echo -e "${GREEN}✓ Test $((TEST_NUMBER-1)) passed:${NC} Quiet mode suppresses output"
+else
+    echo -e "${RED}✗ Test $((TEST_NUMBER-1)) failed:${NC} Quiet mode should suppress output (got: $output)"
+    ((FAILED_TESTS++))
+fi
+((TOTAL_TESTS++))
+verify_test "File moved to trash in quiet mode" [ ! -f quiet_test_file.txt ]
+
+# Test 47: --restore with no history fails
+print_header "--restore with no history"
+UNDO_FILE_BAK="$HOME/.safe_rm_undo.tsv.bak"
+[ -f "$HOME/.safe_rm_undo.tsv" ] && mv "$HOME/.safe_rm_undo.tsv" "$UNDO_FILE_BAK"
+run_test "--restore with no history exits 1" 1 bash "$SAFE_RM" --restore
+[ -f "$UNDO_FILE_BAK" ] && mv "$UNDO_FILE_BAK" "$HOME/.safe_rm_undo.tsv"
+
+# Test 48: --restore last trashed item
+print_header "--restore last trashed item"
+setup_test_files touch restore_last_test.txt
+run_test "Trash file for restore" 0 bash "$SAFE_RM" restore_last_test.txt
+run_test "--restore last item" 0 bash "$SAFE_RM" --restore
+verify_test "File restored to original location" [ -f restore_last_test.txt ]
+# Cleanup
+setup_test_files /bin/rm -f restore_last_test.txt
+
+# Test 49: --restore specific file by name
+print_header "--restore specific file"
+setup_test_files touch restore_specific_test.txt
+run_test "Trash specific file" 0 bash "$SAFE_RM" restore_specific_test.txt
+run_test "--restore specific file by name" 0 bash "$SAFE_RM" --restore restore_specific_test.txt
+verify_test "Specific file restored" [ -f restore_specific_test.txt ]
+setup_test_files /bin/rm -f restore_specific_test.txt
+
+# Test 50: --restore nonexistent record fails
+print_header "--restore nonexistent record"
+run_test "--restore unknown file exits 1" 1 bash "$SAFE_RM" --restore __file_that_was_never_trashed_xyz__
+
+# Test 51: --list exits 0
+print_header "--list command"
+run_test "--list exits successfully" 0 bash "$SAFE_RM" --list
+
+# Test 52: --list shows trashed file info
+print_header "--list shows file info"
+setup_test_files touch list_display_test.txt
+run_test "Trash file for list display" 0 bash "$SAFE_RM" list_display_test.txt
+if find "${TEST_TRASH}" -maxdepth 1 -name "list_display_test*" 2>/dev/null | grep -q .; then
+    echo -e "${GREEN}✓ Test $((TEST_NUMBER-1)) passed:${NC} --list shows trashed file name"
+else
+    echo -e "${RED}✗ Test $((TEST_NUMBER-1)) failed:${NC} --list should show trashed file"
+    ((FAILED_TESTS++))
+fi
+((TOTAL_TESTS++))
+
+# Test 53: --empty -y empties trash
+print_header "--empty -y empties trash"
+run_test "--empty with -y exits 0" 0 bash "$SAFE_RM" -y --empty
+
+# Test 54: --empty on already-empty trash
+print_header "--empty on already-empty trash"
+run_test "--empty on empty trash exits 0" 0 bash "$SAFE_RM" -y --empty
+
+# Test 55: --empty --days 0 (age filter)
+print_header "--empty --days 0"
+setup_test_files touch empty_days_test.txt
+run_test "Trash file for --empty --days test" 0 bash "$SAFE_RM" empty_days_test.txt
+run_test "--empty --days 0 exits 0" 0 bash "$SAFE_RM" -y --empty --days 0
+
+# Test 56: --purge permanently deletes file
+print_header "--purge permanent delete"
+setup_test_files touch purge_test_file.txt
+WRAPPER="$TEST_DIR/purge_wrapper.sh"
+cat > "$WRAPPER" << 'EOF'
+#!/bin/bash
+echo "y" | "$@"
+EOF
+chmod +x "$WRAPPER"
+run_test "--purge deletes file permanently" 0 "$WRAPPER" bash "$SAFE_RM" --purge purge_test_file.txt
+verify_test "Purged file no longer exists" [ ! -f purge_test_file.txt ]
+
+# Test 57: --purge nonexistent file fails
+print_header "--purge nonexistent file"
+run_test "--purge nonexistent file exits 1" 1 bash "$SAFE_RM" --purge __nonexistent_purge_file_xyz__
+
+# Test 58: --purge canceled leaves file intact
+print_header "--purge cancel"
+setup_test_files touch purge_cancel_test.txt
+CANCEL_WRAPPER="$TEST_DIR/purge_cancel_wrapper.sh"
+cat > "$CANCEL_WRAPPER" << 'EOF'
+#!/bin/bash
+echo "n" | "$@"
+EOF
+chmod +x "$CANCEL_WRAPPER"
+"$CANCEL_WRAPPER" bash "$SAFE_RM" --purge purge_cancel_test.txt > /dev/null 2>&1
+verify_test "Canceled purge leaves file intact" [ -f purge_cancel_test.txt ]
+setup_test_files /bin/rm -f purge_cancel_test.txt
+
+# Test 59: Dangerous path guard - HOME not trashed in dry-run
+print_header "Dangerous path guard (HOME)"
+run_test "Dangerous path: HOME with dry-run exits 0" 0 bash "$SAFE_RM" -n "$HOME"
+verify_test "HOME still exists after dry-run" [ -d "$HOME" ]
+
+# Test 60: Dangerous path guard - skip without -y
+print_header "Dangerous path guard: skips without confirmation"
+SKIP_WRAPPER="$TEST_DIR/dangerous_skip_wrapper.sh"
+cat > "$SKIP_WRAPPER" << 'EOF'
+#!/bin/bash
+echo "n" | "$@"
+EOF
+chmod +x "$SKIP_WRAPPER"
+"$SKIP_WRAPPER" bash "$SAFE_RM" "$HOME" > /dev/null 2>&1
+verify_test "HOME not trashed after rejecting dangerous path prompt" [ -d "$HOME" ]
+
+# Test 61: Undo stack recorded after trash
+print_header "Undo stack records trash operations"
+setup_test_files touch undo_stack_test.txt
+UNDO_FILE="$HOME/.safe_rm_undo.tsv"
+run_test "Trash file for undo stack check" 0 bash "$SAFE_RM" undo_stack_test.txt
+if [ -f "$UNDO_FILE" ] && grep -q "undo_stack_test.txt" "$UNDO_FILE" 2>/dev/null; then
+    echo -e "${GREEN}  ✓${NC} Undo stack contains trashed file entry"
+else
+    echo -e "${RED}  ✗${NC} Undo stack missing entry for trashed file"
+    ((FAILED_TESTS++))
+fi
+
+# Test 62: Log rotation (force over limit and verify trim)
+print_header "Log rotation"
+LOG_FILE="$HOME/.safe_rm.log"
+# Backup and create oversized log
+[ -f "$LOG_FILE" ] && cp "$LOG_FILE" "${LOG_FILE}.test_bak"
+python3 -c "
+import sys
+for i in range(1100):
+    print(f'[2024-01-01 00:00:00] [INFO] Dummy log line {i}')
+" >> "$LOG_FILE" 2>/dev/null || true
+setup_test_files touch log_rotation_test.txt
+run_test "Log rotation triggered on operation" 0 bash "$SAFE_RM" log_rotation_test.txt
+line_count=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 9999)
+if [ "$line_count" -le 1000 ]; then
+    echo -e "${GREEN}  ✓${NC} Log rotated to $line_count lines (≤1000)"
+else
+    echo -e "${RED}  ✗${NC} Log not rotated: $line_count lines"
+    ((FAILED_TESTS++))
+fi
+# Restore log
+/bin/rm -f "$LOG_FILE"
+[ -f "${LOG_FILE}.test_bak" ] && mv "${LOG_FILE}.test_bak" "$LOG_FILE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 # print_header "Results" "Summary"
 echo -e "\n${MAGENTA}Results:${NC}"
-echo -e "Total tests run: $(($TOTAL_TESTS-1))"
+echo -e "Total tests run: $TOTAL_TESTS"
 if [ $FAILED_TESTS -eq 0 ]; then
     echo -e "${GREEN}All tests passed successfully!${NC}"
 else

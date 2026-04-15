@@ -2,6 +2,7 @@
 SCRIPT_NAME = safe_rm.sh
 INSTALL_DIR = $(HOME)/.local/bin
 LOG_FILE = $(HOME)/.safe_rm.log
+UNDO_FILE = $(HOME)/.safe_rm_undo.tsv
 
 RED = \033[0;31m
 GREEN = \033[0;32m
@@ -37,6 +38,11 @@ help:
 	@echo "  version    - Display version information"
 	@echo "  docs       - Generate documentation"
 	@echo "  update     - Update to the latest version"
+	@echo "  script-help - Show safe_rm.sh usage and options"
+
+.PHONY: script-help
+script-help:
+	@bash $(SCRIPT_NAME) --help
 
 .PHONY: check-path
 check-path:
@@ -104,7 +110,7 @@ install: setup check-path
 uninstall:
 	@echo "Removing $(SCRIPT_NAME) from $(INSTALL_DIR)..."
 	@if [ -f "$(INSTALL_DIR)/$(SCRIPT_NAME)" ]; then \
-		rm -f $(INSTALL_DIR)/$(SCRIPT_NAME); \
+		/bin/rm -f $(INSTALL_DIR)/$(SCRIPT_NAME); \
 		echo "${GREEN}Script removed.${NC}"; \
 	else \
 		echo "${YELLOW}Script not found in $(INSTALL_DIR) - nothing to remove.${NC}"; \
@@ -127,10 +133,17 @@ uninstall:
 	fi
 	@echo "Removing log file $(LOG_FILE)..."
 	@if [ -f "$(LOG_FILE)" ]; then \
-		rm -f $(LOG_FILE); \
+		/bin/rm -f $(LOG_FILE); \
 		echo "${GREEN}Log file removed.${NC}"; \
 	else \
 		echo "${YELLOW}Log file not found - nothing to remove.${NC}"; \
+	fi
+	@echo "Removing undo stack $(UNDO_FILE)..."
+	@if [ -f "$(UNDO_FILE)" ]; then \
+		/bin/rm -f $(UNDO_FILE); \
+		echo "${GREEN}Undo stack removed.${NC}"; \
+	else \
+		echo "${YELLOW}Undo stack not found - nothing to remove.${NC}"; \
 	fi
 	@echo "${GREEN}Uninstallation complete. Please restart your shell or source your shell config file.${NC}"
 
@@ -158,7 +171,7 @@ test: setup
 
 .PHONY: clean
 clean:
-	@rm -rf tests/safe_rm_test
+	@/bin/rm -rf tests/safe_rm_test
 	@find . -name "*.bak" -delete
 	@find . -name "*~" -delete
 	@echo "${GREEN}Clean up complete.${NC}"
@@ -201,6 +214,11 @@ verify:
 		echo "${GREEN}✓ Log file exists: $(LOG_FILE)${NC}"; \
 	else \
 		echo "${RED}✗ Log file does not exist${NC}"; \
+	fi
+	@if [ -f "$(UNDO_FILE)" ]; then \
+		echo "${GREEN}✓ Undo stack exists: $(UNDO_FILE)${NC}"; \
+	else \
+		echo "${YELLOW}⚠ Undo stack not yet created: $(UNDO_FILE)${NC}"; \
 	fi
 	@$(MAKE) check-path
 

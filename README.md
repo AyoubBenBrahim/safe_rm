@@ -1,127 +1,165 @@
-# Safe RM
+# safe_rm
 
-A safer alternative to the standard `rm` command that moves files to trash instead of permanently deleting them, so files can be easily restored in case they are removed by mistake.
+A drop-in `rm` replacement that moves files to Trash instead of permanently deleting them. Supports restore, Trash management, dangerous path protection, and full `rm` flag compatibility.
 
-> **Note:** You can still use the original `/bin/rm` command if needed. This script works by aliasing the `rm` command to `safe_rm`, ensuring safer file deletion by default.
+> `/bin/rm` is still available if you need permanent deletion. This script aliases `rm` to `safe_rm` so safe behavior is the default.
 
 ## Features
 
-- Moves files to trash instead of permanent deletion
-- Confirmation before deletion
-- Dry run mode
-- Verbose output
-- Exclusion patterns
-- Handling of file conflicts
-- Permission handling
-- Logging of operations
-- Special character and Unicode support
+- Moves files/directories to Trash — never permanently deleted by accident
+- **Restore** trashed files back to their original location
+- **List** Trash contents with sizes and original paths
+- **Empty** Trash (all at once or by age)
+- **Purge** for intentional permanent deletion (with confirmation)
+- Dangerous path guard — warns before trashing `~`, `/`, system dirs
+- Undo stack (`~/.safe_rm_undo.tsv`) tracks every operation
+- Log rotation — capped at 1000 lines
+- Exclusion patterns with shell wildcards (`*`, `?`, `[]`)
+- Dry run and verbose modes
+- Full `rm` flag compatibility (`-r`, `-f`, `-i`, `-d`)
+- Quiet mode for scripting
+- Sudo fallback for permission-restricted files
 
 ## Installation
 
-You can install `safe_rm` using the provided Makefile. Run the following commands:
-
 ```bash
-make install
-```
-or simply 
-```bash
-make i
+make install   # or: make i
 ```
 
-To uninstall, use:
+To uninstall:
 
 ```bash
 make uninstall
 ```
 
+After install, reload your shell:
+
+```bash
+source ~/.zshrc   # zsh
+source ~/.bashrc  # bash
+```
+
 ## Usage
 
 ```bash
-safe_rm [OPTIONS] FILE/DIRECTORY...
+rm [OPTIONS] FILE/DIRECTORY...
+rm --restore [FILE]
+rm --list
+rm --empty [--days N]
+rm --purge FILE
 ```
 
 ## Options
 
 | Option | Description |
-| ------ | ----------- |
-| `-v` | Enable verbose mode (show detailed output). |
-| `-n` | Enable dry run mode (simulate moving files without actually doing it). |
-| `-e PATTERN` | Exclude files/directories that match the pattern. |
-| `-E LIST` | Exclude multiple patterns (comma-separated list). |
-| `-y` | Automatically confirm all operations without prompting. |
-| `--help` | Display this help message and exit. |
-| `--version` | Display version information and exit. |
+|--------|-------------|
+| `-v` | Verbose — show detailed output |
+| `-n` | Dry run — simulate without moving anything |
+| `-q` | Quiet — suppress all output except errors |
+| `-y` | Auto-confirm all prompts |
+| `-i` | Interactive — prompt before each operation |
+| `-f` | Force — suppress confirmations (like standard `rm -f`) |
+| `-r`, `-R` | Recursive (accepted for compatibility, handled automatically) |
+| `-e PATTERN` | Exclude files matching pattern |
+| `-E "P1,P2"` | Exclude multiple comma-separated patterns |
+| `--help` | Show help and exit |
+| `--version` | Show version and exit |
+
+## Modes
+
+| Command | Description |
+|---------|-------------|
+| `rm --restore` | Restore the last trashed item |
+| `rm --restore FILE` | Restore a specific file by name |
+| `rm --list` | List Trash contents with sizes and original paths |
+| `rm --empty` | Permanently delete all Trash contents |
+| `rm --empty --days N` | Permanently delete Trash items older than N days |
+| `rm --purge FILE` | Permanently delete FILE — bypasses Trash, irreversible |
 
 ## Examples
 
 ```bash
-# Move a single file to Trash
-safe_rm file.txt
+# Trash a file
+rm file.txt
 
-# Move multiple files and directories to Trash with verbose output
-safe_rm -v file1.txt dir1
+# Trash multiple files/dirs (no prompt)
+rm file1.txt dir1 node_modules
 
-# Exclude all .txt files from removal
-safe_rm -e "*.txt" *
+# Restore last trashed item
+rm --restore
 
-# Exclude multiple patterns (e.g., .txt files, .log files, and a specific directory)
-safe_rm -E "*.txt,*.log,dir1" *
+# Restore specific file
+rm --restore file.txt
 
-# Use dry run mode to simulate the operation
-safe_rm -n file1.txt
+# List Trash contents
+rm --list
 
-# Automatically confirm deletion without prompting
-safe_rm -y file1.txt dir1
+# Empty Trash
+rm --empty
+
+# Delete Trash items older than 30 days
+rm --empty --days 30
+
+# Permanently delete (bypasses Trash)
+rm --purge secret.txt
+
+# Dry run — see what would be moved
+rm -n file1.txt dir1
+
+# Exclude .txt files
+rm -e "*.txt" *
+
+# Exclude multiple patterns
+rm -E "*.log,*.tmp,node_modules" *
+
+# Verbose output
+rm -v file1.txt
+
+# Quiet mode (no output, useful in scripts)
+rm -q file1.txt
 ```
-
-## Makefile Targets
-
-The Makefile includes several useful targets:
-
-- `help`: Show help message
-- `install` or just `i`
-- `uninstall`
-- `test`: Run all tests
-- `clean`: Remove temporary files
-- `verify`: Check if the script is properly installed
-- `update`: Update to the latest version (if using git)
 
 ## Exclusion Patterns
 
-The exclusion patterns support:
-- Shell wildcards (`*`, `?`, `[]`)
-- Full paths or file names
-- Directory patterns with trailing slash (`dir/`)
-- Multiple exclusions using `-e` or `-E` options
+Patterns support shell wildcards and are matched against filenames or paths:
 
-## Logging
+| Pattern | Matches |
+|---------|---------|
+| `*.txt` | All `.txt` files |
+| `??.md` | Any 2-char `.md` files |
+| `file[1-3].log` | `file1.log`, `file2.log`, `file3.log` |
+| `important.txt` | Exact filename |
+| `build/` | All files inside `build/` directory |
 
-By default, logs are stored in `~/.safe_rm.log`. You can change the log file location by setting the `SAFE_RM_LOG` environment variable.
+Multiple patterns:
+```bash
+rm -e "*.log" -e "*.tmp" *          # chained -e
+rm -E "*.log,*.tmp,build/" *         # comma-separated
+```
 
-## Special Cases
+## Protected Paths
 
-- **Permissions:** The script handles read-only files and directories by prompting for sudo if necessary.
-- **Special Characters:** Files with spaces, dashes, underscores, and Unicode characters are handled correctly.
-- **Symlinks:** The script moves the symlink itself, not the target file.
+The following paths trigger a warning and require explicit confirmation:
 
-## Examples of Exclusion
+`~`, `/`, `/usr`, `/etc`, `/bin`, `/System`, `/Library`, `~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/Music`, `~/Movies`, `~/Library`
 
-1. **Exclude a specific file:**
-   ```bash
-   safe_rm -e "important.txt" *
-   ```
+## Files
 
-2. **Exclude all .txt files in a directory:**
-   ```bash
-   safe_rm -e "*.txt" documents/*
-   ```
+| File | Purpose |
+|------|---------|
+| `~/.Trash` | Trash directory |
+| `~/.safe_rm.log` | Operation log (capped at 1000 lines) |
+| `~/.safe_rm_undo.tsv` | Undo stack for `--restore` |
 
-3. **Exclude multiple patterns:**
-   ```bash
-   safe_rm -E "file1,*.log,documents/private" *
-   ```
+## Makefile Targets
 
-4. **Exclude a directory and its contents:**
-   ```bash
-   safe_rm -e "downloads/" *
-   ```
+| Target | Description |
+|--------|-------------|
+| `make install` / `make i` | Install and add alias to shell config |
+| `make uninstall` | Remove script, alias, log, and undo stack |
+| `make test` | Run all 65 tests |
+| `make verify` | Check installation status |
+| `make script-help` | Show `safe_rm --help` |
+| `make clean` | Remove temp files |
+| `make update` | Pull latest version (requires git) |
+| `make version` | Show installed version |
